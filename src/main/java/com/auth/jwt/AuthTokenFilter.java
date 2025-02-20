@@ -1,13 +1,13 @@
 package com.auth.jwt;
 
+import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsServiceImpl;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -17,31 +17,23 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.io.IOException;
 
+@Slf4j
+@RequiredArgsConstructor
 public class AuthTokenFilter extends OncePerRequestFilter  {
 
-    @Autowired
-    private JwtUtils jwtUtils;
-
-    @Autowired
-    private UserDetailsServiceImpl userDetailsService;
-
-    public static final Logger logger = LoggerFactory.getLogger(AuthTokenFilter.class);
+    private final JwtUtils jwtUtils;
+    private final UserDetailsServiceImpl userDetailsService;
+    private final RefreshTokenService refreshTokenService;
 
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
 
-        logger.debug("Processing request: " + request.getRequestURI());
-//        String requestURI = request.getRequestURI();
-//        // Skip filtering for /api/auth/** paths (like signup and signin)
-//        if (requestURI.startsWith("/api/auth")) {
-//            filterChain.doFilter(request, response);
-//            return;
-//        }
+        log.debug("Processing request: " + request.getRequestURI());
 
         try {
             String jwt = parseJwt(request);
-            logger.debug("JWT from request: {}", jwt);
+            log.debug("JWT from request: {}", jwt);
             if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
                 String username = jwtUtils.getUserNameFromJwtToken(jwt);
 
@@ -54,14 +46,41 @@ public class AuthTokenFilter extends OncePerRequestFilter  {
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                logger.debug("User authenticated: {}", username);
-            }
-            else {
-                logger.warn("JWT is null or invalid");
+                log.debug("User authenticated: {}", username);
+
+            } else if (jwt != null && !jwtUtils.validateJwtToken(jwt)) {
+                log.warn("JWT is invalid. Checking for refresh token...");
+
+                // Handle refresh token logic
+                String refreshToken = request.getHeader("Refresh-Token");
+                if (refreshToken != null && refreshTokenService.validateRefreshToken(refreshToken)) {
+                    // Get the username from the refresh token
+                    String usernameFromRefreshToken = jwtUtils.getUserNameFromJwtToken(refreshToken);
+                    log.debug("Username extracted from refresh token: {}", usernameFromRefreshToken);
+
+                    // Generate a new access token using the username from the refresh token
+                    String newAccessToken = jwtUtils.generateJwtTokenFromUsername(usernameFromRefreshToken);
+                    response.setHeader("Authorization", "Bearer " + newAccessToken);
+                    log.info("Access token refreshed for user: {}", usernameFromRefreshToken);
+
+                    // Optionally, you can set the authentication again with the refreshed token
+                    UserDetails newUserDetails = userDetailsService.loadUserByUsername(usernameFromRefreshToken);
+                    UsernamePasswordAuthenticationToken newAuthentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    newUserDetails,
+                                    null,
+                                    newUserDetails.getAuthorities());
+                    SecurityContextHolder.getContext().setAuthentication(newAuthentication);
+                } else {
+                    log.warn("Refresh token is invalid or missing");
+                }
+            } else {
+                log.warn("JWT is null");
             }
         } catch (Exception e) {
-            logger.error("Cannot set user authentication: {}", e);
+            log.error("Cannot set user authentication: {}", e);
         }
+
         filterChain.doFilter(request, response);
     }
 

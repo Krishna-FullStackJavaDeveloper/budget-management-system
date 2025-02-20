@@ -2,7 +2,10 @@ package com.auth.config;
 
 import com.auth.jwt.AuthEntryPointJwt;
 import com.auth.jwt.AuthTokenFilter;
+import com.auth.jwt.JwtUtils;
+import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsServiceImpl;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,28 +25,23 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableMethodSecurity
-// (securedEnabled = true,
-// jsr250Enabled = true,
-// prePostEnabled = true) // by default
+@RequiredArgsConstructor
 public class WebSecurityConfig {
-    @Autowired
-    UserDetailsServiceImpl userDetailsService;
-
-    @Autowired
-    private AuthEntryPointJwt unauthorizedHandler;
+    private final UserDetailsServiceImpl userDetailsService;
+    private final AuthEntryPointJwt unauthorizedHandler;
+    private final JwtUtils jwtUtils; // Inject JwtUtils
+    private final RefreshTokenService refreshTokenService; // Inject RefreshTokenService
 
     @Bean
     public AuthTokenFilter authenticationJwtTokenFilter() {
-        return new AuthTokenFilter();
+        return new AuthTokenFilter(jwtUtils, userDetailsService, refreshTokenService); // Pass the required parameters
     }
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-
         authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
-
         return authProvider;
     }
 
@@ -65,11 +63,13 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(auth ->
                         auth.requestMatchers("/api/auth/**").permitAll()
                                 .requestMatchers("/api/test/**").permitAll()
+                                .requestMatchers("/refresh").permitAll() // Allow access to the refresh endpoint
                                 .anyRequest().authenticated()
                 );
 
         http.authenticationProvider(authenticationProvider());
 
+        // Add the JWT auth filter before the UsernamePasswordAuthenticationFilter
         http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
