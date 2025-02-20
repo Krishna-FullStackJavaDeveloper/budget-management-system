@@ -1,6 +1,5 @@
 package com.auth.serviceImpl;
 
-import com.auth.entity.ERole;
 import com.auth.entity.RefreshToken;
 import com.auth.entity.User;
 import com.auth.jwt.JwtUtils;
@@ -8,19 +7,12 @@ import com.auth.repository.RefreshTokenRepository;
 import com.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
-import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
