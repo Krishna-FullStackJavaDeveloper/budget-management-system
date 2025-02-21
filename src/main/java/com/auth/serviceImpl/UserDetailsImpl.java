@@ -2,29 +2,33 @@ package com.auth.serviceImpl;
 
 import com.auth.entity.User;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-@RequiredArgsConstructor
+@Getter
 public class UserDetailsImpl implements UserDetails{
 
     private static final long serialVersionUID = 1L;
-    private Long id;
-    private String username;
-    private String email;
+    private final Long id;
+    private final String username;
+    private final String email;
     @JsonIgnore
-    private String password;
-    private Collection<GrantedAuthority> authorities;
-    private User user;
+    private final String password;
+    private Collection<GrantedAuthority> authorities; // Lazy loading
+    private final User user;
+
 
     public UserDetailsImpl(User user) {
+        if (user == null) {
+            throw new IllegalArgumentException("User cannot be null");
+        }
         this.id = user.getId();
         this.username = user.getUsername();
         this.email = user.getEmail();
@@ -35,35 +39,29 @@ public class UserDetailsImpl implements UserDetails{
         this.user = user;  // Assign user correctly
     }
 
+    // Lazy initialization of authorities
+    @Override
+    public Collection<GrantedAuthority> getAuthorities() {
+        return authorities; // Return already initialized authorities
+    }
 
     public static UserDetailsImpl build(User user) {
         return new UserDetailsImpl(user);
     }
-    public User getUser() { // Add this method
-        return user;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
+        UserDetailsImpl user = (UserDetailsImpl) o;
+        return Objects.equals(id, user.id);
     }
 
     @Override
-    public Collection<GrantedAuthority> getAuthorities() {
-        return authorities;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    @Override
-    public String getPassword() {
-        return password;
-    }
-
-    @Override
-    public String getUsername() {
-        return username;
+    public int hashCode() {
+        return Objects.hash(id);
     }
 
     @Override
@@ -85,20 +83,4 @@ public class UserDetailsImpl implements UserDetails{
     public boolean isEnabled() {
         return true;
     }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o)
-            return true;
-        if (o == null || getClass() != o.getClass())
-            return false;
-        UserDetailsImpl user = (UserDetailsImpl) o;
-        return Objects.equals(id, user.id);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id);
-    }
-
 }

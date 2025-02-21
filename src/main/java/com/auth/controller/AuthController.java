@@ -4,6 +4,7 @@ import com.auth.entity.ERole;
 import com.auth.entity.Role;
 import com.auth.entity.User;
 import com.auth.jwt.AuthEntryPointJwt;
+import com.auth.jwt.AuthTokenFilter;
 import com.auth.jwt.JwtUtils;
 import com.auth.payload.request.LoginRequest;
 import com.auth.payload.request.SignupRequest;
@@ -15,6 +16,7 @@ import com.auth.serviceImpl.EmailService;
 import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsImpl;
 import com.auth.serviceImpl.UserDetailsServiceImpl;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,10 +40,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @RestController
@@ -57,10 +57,10 @@ public class AuthController {
     private final JwtUtils jwtUtils;
     private final RefreshTokenService refreshTokenService;
     private final EmailService emailService;
+    private final AuthTokenFilter authTokenFilter;
 
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
-
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
@@ -73,13 +73,11 @@ public class AuthController {
                     .collect(Collectors.toList());
 
             String accessToken = jwtUtils.generateJwtToken(authentication);
-            // Generate the refresh token
-            String refershToken = refreshTokenService.createRefreshToken(userDetails.getUser());// Ensure you pass the user entity here
+            String refershToken = refreshTokenService.createRefreshToken(userDetails.getUser());
             log.info("Generated refresh token: {}", refershToken);
 
             // Send login notification email
             emailService.sendLoginNotification(userDetails.getEmail());
-            log.info("Login notification email sent to {}", userDetails.getEmail());
 
             log.info("User {} logged in successfully", loginRequest.getUsername());
             return ResponseEntity.ok(new JwtResponse(accessToken,
@@ -153,31 +151,33 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<?> refreshToken(HttpServletRequest request) {
-        String refreshToken = request.getHeader("Authorization");
+        String refreshToken = authTokenFilter.parseJwt(request);
 
-        if (refreshToken == null || !refreshToken.startsWith("Bearer ")) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Refresh token is missing or invalid");
-        }
+        try {
+            if (!refreshTokenService.validateRefreshToken(refreshToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
+            }
 
-        refreshToken = refreshToken.substring(7); // Remove "Bearer " prefix
+            String username = jwtUtils.getUserNameFromJwtToken(refreshToken);
+            CompletableFuture<Optional<User>> userFuture = CompletableFuture.supplyAsync(() -> userRepository.findByUsername(username));
 
-        // Validate the refresh token
-        log.info("Validating refresh token: {}", refreshToken);
-        if (!refreshTokenService.validateRefreshToken(refreshToken)) {
-            log.warn("Invalid refresh token: {}", refreshToken);
+            return userFuture.thenApply(userOptional -> {
+                if (userOptional.isEmpty()) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+                }
+
+                String newAccessToken = jwtUtils.generateJwtTokenFromUsername(username);
+                return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
+            }).exceptionally(ex -> {
+                log.error("Error during token refresh: {}", ex.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred");
+            }).join(); // Ensure async execution completes
+        } catch (JwtException e) {
+            log.warn("Invalid refresh token: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
+        } catch (Exception e) {
+            log.error("Unexpected error in refresh token: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred");
         }
-        System.out.println("Received refresh token: " + refreshToken);
-        // Extract the username from the refresh token
-        String username = jwtUtils.getUserNameFromJwtToken(refreshToken);
-
-        // Find user in database
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-
-        // Generate new access token
-        String newAccessToken = jwtUtils.generateJwtTokenFromUsername(username);
-
-        return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
     }
 }

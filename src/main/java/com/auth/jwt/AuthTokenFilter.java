@@ -2,6 +2,7 @@ package com.auth.jwt;
 
 import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsServiceImpl;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,66 +32,62 @@ public class AuthTokenFilter extends OncePerRequestFilter  {
 
         log.debug("Processing request: " + request.getRequestURI());
 
+        String jwt = parseJwt(request);
+        if (jwt == null) {
+            log.warn("JWT is null, proceeding with request.");
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         try {
-            String jwt = parseJwt(request);
-            log.debug("JWT from request: {}", jwt);
-            if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
-                String username = jwtUtils.getUserNameFromJwtToken(jwt);
-
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                userDetails,
-                                null,
-                                userDetails.getAuthorities());
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-                log.debug("User authenticated: {}", username);
-
-            } else if (jwt != null && !jwtUtils.validateJwtToken(jwt)) {
-                log.warn("JWT is invalid. Checking for refresh token...");
-
-                // Handle refresh token logic
-                String refreshToken = request.getHeader("Refresh-Token");
-                if (refreshToken != null && refreshTokenService.validateRefreshToken(refreshToken)) {
-                    // Get the username from the refresh token
-                    String usernameFromRefreshToken = jwtUtils.getUserNameFromJwtToken(refreshToken);
-                    log.debug("Username extracted from refresh token: {}", usernameFromRefreshToken);
-
-                    // Generate a new access token using the username from the refresh token
-                    String newAccessToken = jwtUtils.generateJwtTokenFromUsername(usernameFromRefreshToken);
-                    response.setHeader("Authorization", "Bearer " + newAccessToken);
-                    log.info("Access token refreshed for user: {}", usernameFromRefreshToken);
-
-                    // Optionally, you can set the authentication again with the refreshed token
-                    UserDetails newUserDetails = userDetailsService.loadUserByUsername(usernameFromRefreshToken);
-                    UsernamePasswordAuthenticationToken newAuthentication =
-                            new UsernamePasswordAuthenticationToken(
-                                    newUserDetails,
-                                    null,
-                                    newUserDetails.getAuthorities());
-                    SecurityContextHolder.getContext().setAuthentication(newAuthentication);
-                } else {
-                    log.warn("Refresh token is invalid or missing");
-                }
+            if (jwtUtils.validateJwtToken(jwt)) {
+                authenticateUser(jwt, request);
             } else {
-                log.warn("JWT is null");
+                handleRefreshToken(request, response);
             }
+        } catch (JwtException e) {
+            log.error("JWT processing error: {}", e.getMessage());
         } catch (Exception e) {
-            log.error("Cannot set user authentication: {}", e);
+            log.error("Unexpected error in authentication filter: ", e);
         }
 
         filterChain.doFilter(request, response);
     }
 
-    private String parseJwt(HttpServletRequest request) {
-        String headerAuth = request.getHeader("Authorization");
+    private void authenticateUser(String jwt, HttpServletRequest request) {
+        String username = jwtUtils.getUserNameFromJwtToken(jwt);
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
-            return headerAuth.substring(7);
-        }
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                userDetails, null, userDetails.getAuthorities());
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-        return null;
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        log.debug("User authenticated successfully: {}", username);
     }
+
+    private void handleRefreshToken(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = request.getHeader("Refresh-Token");
+        if (StringUtils.hasText(refreshToken) && refreshTokenService.validateRefreshToken(refreshToken)) {
+            String username = jwtUtils.getUserNameFromJwtToken(refreshToken);
+            log.info("Refreshing token for user: {}", username);
+
+            String newAccessToken = jwtUtils.generateJwtTokenFromUsername(username);
+            response.setHeader("Authorization", "Bearer " + newAccessToken);
+
+            authenticateUser(newAccessToken, request);
+        } else {
+            log.warn("Invalid or missing refresh token.");
+        }
+    }
+
+    public String parseJwt(HttpServletRequest request) {
+        String headerAuth = request.getHeader("Authorization");
+        return (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) ? headerAuth.substring(7) : null;
+    }
+
+
+
+
+
 }

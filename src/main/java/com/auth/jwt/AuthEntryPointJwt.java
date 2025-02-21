@@ -20,23 +20,25 @@ import java.util.Map;
 @Slf4j
 public class AuthEntryPointJwt implements AuthenticationEntryPoint {
 
-//    private static final Logger logger = LoggerFactory.getLogger(AuthEntryPointJwt.class);
-
+    private final ObjectMapper objectMapper = new ObjectMapper(); // Reuse ObjectMapper
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
-        log.error("Unauthorization error: {}", authException.getMessage());
+        log.warn("Unauthorized access attempt: {} at {}", authException.getMessage(), request.getServletPath());
 
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 
-        final Map<String, Object> body = new HashMap<>();
-        body.put("status", HttpServletResponse.SC_UNAUTHORIZED);
-        body.put("error", "Unauthorized");
-        body.put("message", authException.getMessage());
-        body.put("path", request.getServletPath());
-
-        final ObjectMapper mapper = new ObjectMapper();
-        mapper.writeValue(response.getOutputStream(), body);
+        Map<String, Object> body = Map.of(
+                "status", HttpServletResponse.SC_UNAUTHORIZED,
+                "error", "Unauthorized",
+                "message", authException.getMessage(),
+                "path", request.getServletPath()
+        );
+        try {
+            objectMapper.writeValue(response.getOutputStream(), body);
+        } catch (IOException e) {
+            log.error("Error writing response: {}", e.getMessage());
+        }
     }
 }

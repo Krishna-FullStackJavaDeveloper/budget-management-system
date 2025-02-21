@@ -29,8 +29,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class WebSecurityConfig {
     private final UserDetailsServiceImpl userDetailsService;
     private final AuthEntryPointJwt unauthorizedHandler;
-    private final JwtUtils jwtUtils; // Inject JwtUtils
-    private final RefreshTokenService refreshTokenService; // Inject RefreshTokenService
+    private final JwtUtils jwtUtils;
+    private final RefreshTokenService refreshTokenService;
 
     @Bean
     public AuthTokenFilter authenticationJwtTokenFilter() {
@@ -38,21 +38,21 @@ public class WebSecurityConfig {
     }
 
     @Bean
+    public static PasswordEncoder passwordEncoder() { // Singleton instance
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
     public DaoAuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
+        authProvider.setPasswordEncoder(passwordEncoder()); // Use the singleton password encoder
         return authProvider;
     }
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 
     @Bean
@@ -63,12 +63,10 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(auth ->
                         auth.requestMatchers("/api/auth/**").permitAll()
                                 .requestMatchers("/api/test/**").permitAll()
-                                .requestMatchers("/refresh").permitAll() // Allow access to the refresh endpoint
                                 .anyRequest().authenticated()
                 );
 
         http.authenticationProvider(authenticationProvider());
-
         // Add the JWT auth filter before the UsernamePasswordAuthenticationFilter
         http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
 
