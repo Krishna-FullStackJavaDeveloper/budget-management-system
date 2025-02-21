@@ -73,6 +73,7 @@ public class AuthTokenFilter extends OncePerRequestFilter  {
             log.info("Refreshing token for user: {}", username);
 
             String newAccessToken = jwtUtils.generateJwtTokenFromUsername(username);
+            log.info("Generated new access token: {}", newAccessToken);
             response.setHeader("Authorization", "Bearer " + newAccessToken);
 
             authenticateUser(newAccessToken, request);

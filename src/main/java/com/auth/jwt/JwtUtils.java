@@ -35,7 +35,13 @@ public class JwtUtils {
 
     //     Generates a refresh token for an authenticated user.
     public String generateRefreshToken(Authentication authentication) {
-        return generateToken(((UserDetailsImpl) authentication.getPrincipal()).getUsername(), refreshTokenExpirationMs);
+        UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
+        return Jwts.builder()
+                .setSubject(userPrincipal.getUsername())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + refreshTokenExpirationMs))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
     }
 
     //    Generates a new access token from a username
@@ -49,15 +55,20 @@ public class JwtUtils {
     }
 
     // Validates a JWT token.
-
     public boolean validateJwtToken(String authToken) {
         try {
             parseTokenClaims(authToken);
             return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            log.error("JWT validation failed: {}", e.getMessage());
-            return false;
+        } catch (ExpiredJwtException e) {
+            log.warn("JWT token is expired: {}", e.getMessage());
+        } catch (MalformedJwtException e) {
+            log.error("Invalid JWT token: {}", e.getMessage());
+        } catch (UnsupportedJwtException e) {
+            log.error("Unsupported JWT token: {}", e.getMessage());
+        } catch (IllegalArgumentException e) {
+            log.error("JWT claims string is empty: {}", e.getMessage());
         }
+        return false;
     }
 
     // ============================= PRIVATE HELPER METHODS =============================

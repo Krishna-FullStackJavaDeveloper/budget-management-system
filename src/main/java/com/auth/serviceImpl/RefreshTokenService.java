@@ -14,6 +14,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -101,16 +102,34 @@ public class RefreshTokenService {
         // Check if the stored token has expired
         if (storedToken.getExpiryDate().isBefore(Instant.now())) {
             refreshTokenRepository.delete(storedToken); // Delete expired token
+            log.info("Deleted expired refresh token: {}", token);
             return false; // Token expired
         }
         // If token is valid, update the cached token
         cachedRefreshToken = storedToken;
-
+        log.info("Successfully validated refresh token for user: {}", storedToken.getUser() != null ? storedToken.getUser().getUsername() : "Unknown User");
+        log.info("Received refresh token: {}", token);
+        log.info("Token expiration date from DB: {}", storedToken.getExpiryDate());
+        log.info("Current time: {}", Instant.now());
         return true; // Token is valid
     }
     // Shutdown the executor service (consider adding this method in a suitable place in your application lifecycle)
     @PreDestroy
     public void shutdown() {
         executorService.shutdown();
+    }
+
+    @PreDestroy
+    public void cleanupExpiredRefreshTokens() {
+        try {
+            List<RefreshToken> expiredTokens = refreshTokenRepository.findByExpiryDateBefore(Instant.now());
+            for (RefreshToken token : expiredTokens) {
+                refreshTokenRepository.delete(token);
+                log.info("Deleted expired refresh token: {}", token.getToken());
+            }
+            log.info("Cleanup of expired refresh tokens completed.");
+        } catch (Exception e) {
+            log.error("Error during cleanup of expired refresh tokens: {}", e.getMessage());
+        }
     }
 }
