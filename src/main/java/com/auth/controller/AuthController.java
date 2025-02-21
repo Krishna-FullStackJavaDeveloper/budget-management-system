@@ -11,6 +11,7 @@ import com.auth.payload.response.JwtResponse;
 import com.auth.payload.response.MessageResponse;
 import com.auth.repository.RoleRepository;
 import com.auth.repository.UserRepository;
+import com.auth.serviceImpl.EmailService;
 import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsImpl;
 import com.auth.serviceImpl.UserDetailsServiceImpl;
@@ -55,7 +56,7 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtUtils jwtUtils;
     private final RefreshTokenService refreshTokenService;
-    private final UserDetailsServiceImpl userDetailsService;
+    private final EmailService emailService;
 
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
@@ -75,6 +76,10 @@ public class AuthController {
             // Generate the refresh token
             String refershToken = refreshTokenService.createRefreshToken(userDetails.getUser());// Ensure you pass the user entity here
             log.info("Generated refresh token: {}", refershToken);
+
+            // Send login notification email
+            emailService.sendLoginNotification(userDetails.getEmail());
+            log.info("Login notification email sent to {}", userDetails.getEmail());
 
             log.info("User {} logged in successfully", loginRequest.getUsername());
             return ResponseEntity.ok(new JwtResponse(accessToken,

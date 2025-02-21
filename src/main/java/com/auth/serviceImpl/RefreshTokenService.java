@@ -36,13 +36,26 @@ public class RefreshTokenService {
 
         // Generate the refresh token
         String refreshToken = jwtUtils.generateRefreshToken(authentication);
-        // Save the refresh token to the database
-        RefreshToken tokenEntity = new RefreshToken();
-        tokenEntity.setUser(user);
-        tokenEntity.setToken(refreshToken);
-        tokenEntity.setExpiryDate(Instant.now().plusMillis(86400000)); // Set expiration (e.g., 1 day)
 
-        refreshTokenRepository.save(tokenEntity); // Save to the database
+        // Check if a refresh token already exists for the user
+        Optional<RefreshToken> existingToken = refreshTokenRepository.findByUser(user);
+
+        // Save the refresh token to the database
+        RefreshToken tokenEntity;
+        if (existingToken.isPresent()) {
+            // Update the existing token
+            tokenEntity = existingToken.get();
+            tokenEntity.setToken(refreshToken);
+            tokenEntity.setExpiryDate(Instant.now().plusMillis(86400000)); // Update expiration
+        } else {
+            // Create a new token entry
+            tokenEntity = new RefreshToken();
+            tokenEntity.setUser(user);
+            tokenEntity.setToken(refreshToken);
+            tokenEntity.setExpiryDate(Instant.now().plusMillis(86400000)); // Set expiration (e.g., 1 day)
+        }
+
+        refreshTokenRepository.save(tokenEntity); // Save/Update in database
 
         return refreshToken; // Return the generated refresh token
     }
