@@ -3,36 +3,31 @@ package com.auth.controller;
 import com.auth.entity.ERole;
 import com.auth.entity.Role;
 import com.auth.entity.User;
-import com.auth.jwt.AuthEntryPointJwt;
 import com.auth.jwt.AuthTokenFilter;
 import com.auth.jwt.JwtUtils;
 import com.auth.payload.request.LoginRequest;
 import com.auth.payload.request.SignupRequest;
+import com.auth.payload.response.ApiResponse;
 import com.auth.payload.response.JwtResponse;
 import com.auth.payload.response.MessageResponse;
 import com.auth.repository.RoleRepository;
 import com.auth.repository.UserRepository;
-import com.auth.serviceImpl.EmailService;
+import com.auth.email.EmailService;
 import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsImpl;
-import com.auth.serviceImpl.UserDetailsServiceImpl;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,8 +55,8 @@ public class AuthController {
     private final AuthTokenFilter authTokenFilter;
 
     @PostMapping("/login")
-    public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
-        try {
+    public ResponseEntity<ApiResponse<JwtResponse>> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
+
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
 
@@ -76,108 +71,100 @@ public class AuthController {
             String refershToken = refreshTokenService.createRefreshToken(userDetails.getUser());
             log.info("Generated refresh token: {}", refershToken);
 
-            // Send login notification email
-            emailService.sendLoginNotification(userDetails.getEmail());
-
+        // Send login notification email asynchronously (to improve response time)
+            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(userDetails.getEmail()));
             log.info("User {} logged in successfully", loginRequest.getUsername());
-            return ResponseEntity.ok(new JwtResponse(accessToken,
-                    userDetails.getId(),
-                    userDetails.getUsername(),
-                    userDetails.getEmail(),
-                    roles,
-                    refershToken
-            )); // Include the refresh token in the response
-        }catch (BadCredentialsException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid username or password");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred");
-        }
+            return ResponseEntity.ok(new ApiResponse<>("Login successful",
+                    new JwtResponse(accessToken,
+                            userDetails.getId(),
+                            userDetails.getUsername(),
+                            userDetails.getEmail(),
+                            roles,
+                            refershToken),
+                    HttpStatus.OK.value()
+            ));// Include the refresh token in the response
+
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<?> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
-        if (userRepository.existsByUsername(signUpRequest.getUsername())) {
-            return ResponseEntity
-                    .badRequest()
-                    .body(new MessageResponse("Error: Username is already taken!"));
-        }
+    public ResponseEntity<ApiResponse<String>> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
 
-        if (userRepository.existsByEmail(signUpRequest.getEmail())) {
-            return ResponseEntity
-                    .badRequest()
-                    .body(new MessageResponse("Error: Email is already in use!"));
-        }
+            if (userRepository.existsByUsername(signUpRequest.getUsername())) {
+                return ResponseEntity
+                        .badRequest()
+                        .body(new ApiResponse<>("Error: Username is already taken!", null, HttpStatus.BAD_REQUEST.value()));
+            }
 
-        // Create new user's account
-        User user = new User(signUpRequest.getUsername(),
-                signUpRequest.getEmail(),
-                encoder.encode(signUpRequest.getPassword()));
+            if (userRepository.existsByEmail(signUpRequest.getEmail())) {
+                return ResponseEntity
+                        .badRequest()
+                        .body(new ApiResponse<>("Error: Email is already in use!", null, HttpStatus.BAD_REQUEST.value()));
+            }
 
-        Set<String> strRoles = signUpRequest.getRole();
-        Set<Role> roles = new HashSet<>();
+            // Create new user's account
+            User user = new User(signUpRequest.getUsername(),
+                    signUpRequest.getEmail(),
+                    encoder.encode(signUpRequest.getPassword()));
 
-        if (strRoles == null) {
-            Role userRole = roleRepository.findByName(ERole.ROLE_USER)
-                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-            roles.add(userRole);
-        } else {
-            strRoles.forEach(role -> {
-                switch (role) {
-                    case "admin":
-                        Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
-                                .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-                        roles.add(adminRole);
+            Set<String> strRoles = signUpRequest.getRole();
+            Set<Role> roles = new HashSet<>();
 
-                        break;
-                    case "mod":
-                        Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
-                                .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-                        roles.add(modRole);
+            if (strRoles == null) {
+                Role userRole = roleRepository.findByName(ERole.ROLE_USER)
+                        .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
+                roles.add(userRole);
+            } else {
+                strRoles.forEach(role -> {
+                    switch (role) {
+                        case "admin":
+                            Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
+                                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
+                            roles.add(adminRole);
 
-                        break;
-                    default:
-                        Role userRole = roleRepository.findByName(ERole.ROLE_USER)
-                                .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-                        roles.add(userRole);
-                }
-            });
-        }
+                            break;
+                        case "mod":
+                            Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
+                                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
+                            roles.add(modRole);
 
-        user.setRoles(roles);
-        userRepository.save(user);
+                            break;
+                        default:
+                            Role userRole = roleRepository.findByName(ERole.ROLE_USER)
+                                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
+                            roles.add(userRole);
+                    }
+                });
+            }
 
-        return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+            user.setRoles(roles);
+            userRepository.save(user);
+
+        // Return successful response
+            ApiResponse<String> response = new ApiResponse<>("User registered successfully!", null, HttpStatus.OK.value());
+            return ResponseEntity.ok(response);
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<?> refreshToken(HttpServletRequest request) {
+    public  CompletableFuture<ResponseEntity<ApiResponse<String>>> refreshToken(HttpServletRequest request) {
         String refreshToken = authTokenFilter.parseJwt(request);
 
-        try {
-            if (!refreshTokenService.validateRefreshToken(refreshToken)) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
-            }
-
-            String username = jwtUtils.getUserNameFromJwtToken(refreshToken);
-            CompletableFuture<Optional<User>> userFuture = CompletableFuture.supplyAsync(() -> userRepository.findByUsername(username));
-
-            return userFuture.thenApply(userOptional -> {
-                if (userOptional.isEmpty()) {
-                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
-                }
-
-                String newAccessToken = jwtUtils.generateJwtTokenFromUsername(username);
-                return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
-            }).exceptionally(ex -> {
-                log.error("Error during token refresh: {}", ex.getMessage());
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred");
-            }).join(); // Ensure async execution completes
-        } catch (JwtException e) {
-            log.warn("Invalid refresh token: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
-        } catch (Exception e) {
-            log.error("Unexpected error in refresh token: ", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred");
+        if (!refreshTokenService.validateRefreshToken(refreshToken)) {
+            throw new JwtException("Invalid refresh token"); // Let GlobalExceptionHandler handle it
         }
+
+        String username = jwtUtils.getUserNameFromJwtToken(refreshToken);
+
+        return CompletableFuture.supplyAsync(() -> userRepository.findByUsername(username))
+                .thenApply(userOptional -> {
+                    if (userOptional.isEmpty()) {
+                        throw new UsernameNotFoundException("User not found"); // Also handled globally
+                    }
+
+                    String newAccessToken = jwtUtils.generateJwtTokenFromUsername(username);
+                    return ResponseEntity.ok(
+                            new ApiResponse<>("Token refreshed successfully", newAccessToken, HttpStatus.OK.value())
+                    );
+                });
+
     }
 }

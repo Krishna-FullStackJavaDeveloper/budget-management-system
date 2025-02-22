@@ -1,29 +1,19 @@
 package com.auth.payload.request;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
 public class LoginRequest {
-    @NotBlank
+    @NotBlank(message = "Username is required")
     private String username;
 
-    public @NotBlank String getUsername() {
-        return username;
-    }
-
-    public void setUsername(@NotBlank String username) {
-        this.username = username;
-    }
-
-    public @NotBlank String getPassword() {
-        return password;
-    }
-
-    public void setPassword(@NotBlank String password) {
-        this.password = password;
-    }
-
-    @NotBlank
+    @NotBlank(message = "Password is required")
     private String password;
 }

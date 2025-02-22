@@ -1,4 +1,4 @@
-package com.auth.serviceImpl;
+package com.auth.email;
 
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
