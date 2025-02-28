@@ -1,4 +1,4 @@
-package com.auth.GlobalExceptionHandler;
+package com.auth.globalException;
 
 import com.auth.payload.response.ApiResponse;
 import io.jsonwebtoken.JwtException;
@@ -85,4 +85,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiResponse<>(ex.getMessage(), null, HttpStatus.NOT_FOUND.value()));
     }
+
+    @ExceptionHandler(ReportGenerationException.class)
+    public ResponseEntity<ApiResponse<String>> handleReportException(ReportGenerationException ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ApiResponse<>("Failed to generate reports: " + ex.getMessage(), null, HttpStatus.INTERNAL_SERVER_ERROR.value()));
+    }
+
 }

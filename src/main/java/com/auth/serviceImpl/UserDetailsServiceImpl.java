@@ -11,8 +11,10 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -47,5 +49,12 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         log.info("User loaded from database: {}", username);
 
         return userDetails;
+    }
+
+    public List<String> getAllAdminEmails() {
+        return userRepository.findAdmins()
+                .stream()
+                .map(User::getEmail)
+                .collect(Collectors.toList());
     }
 }

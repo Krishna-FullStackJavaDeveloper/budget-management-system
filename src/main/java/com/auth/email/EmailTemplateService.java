@@ -51,10 +51,6 @@ public class EmailTemplateService {
         return cachedSubjects.getOrDefault(key, "No Subject"); // Use cached subjects
     }
 
-    public String getBody(String key) {
-        loadTemplates("email-templates.properties"); // Call to load templates if not already loaded
-        return cachedBodies.getOrDefault(key, "No Content"); // Use cached bodies
-    }
 
     //    Modify your EmailTemplateService to replace placeholders dynamically.
     public String getFormattedBody(String key, Map<String, String> placeholders) {
