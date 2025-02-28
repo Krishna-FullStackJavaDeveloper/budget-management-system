@@ -72,7 +72,7 @@ public class AuthController {
             log.info("Generated refresh token: {}", refershToken);
 
         // Send login notification email asynchronously (to improve response time)
-            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(userDetails.getEmail()));
+            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(userDetails.getEmail(), userDetails.getUsername(),"login"));
             log.info("User {} logged in successfully", loginRequest.getUsername());
             return ResponseEntity.ok(new ApiResponse<>("Login successful",
                     new JwtResponse(accessToken,
@@ -105,8 +105,9 @@ public class AuthController {
             User user = new User(signUpRequest.getUsername(),
                     signUpRequest.getEmail(),
                     encoder.encode(signUpRequest.getPassword()));
-
             Set<String> strRoles = signUpRequest.getRole();
+
+            log.info("user{} request Role", strRoles);
             Set<Role> roles = new HashSet<>();
 
             if (strRoles == null) {
@@ -135,9 +136,11 @@ public class AuthController {
                     }
                 });
             }
-
             user.setRoles(roles);
             userRepository.save(user);
+            // Send login notification email asynchronously (to improve response time)
+            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(user.getEmail(), user.getUsername(),"register"));
+            log.info("Signup message sent successfully", signUpRequest.getUsername() + signUpRequest.getEmail());
 
         // Return successful response
             ApiResponse<String> response = new ApiResponse<>("User registered successfully!", null, HttpStatus.OK.value());

@@ -7,9 +7,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -24,20 +31,32 @@ public class EmailService {
 
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-    public void sendLoginNotification(String recipientEmail) {
+    public void sendLoginNotification(String recipientEmail,  String userName, String action) {
 
         executorService.submit(() -> {
             SimpleMailMessage message = new SimpleMailMessage();
 
             // Load templates lazily
             emailTemplateService.loadTemplates("notification-email-templates.properties");
+            // Get subject
+            String subject = emailTemplateService.getSubject("email." +action);
 
-            // Get subject and body from the login template
-            String subject = emailTemplateService.getSubject("email.login");
-            String body = emailTemplateService.getBody("email.login");
+            // Format the date and time
+            ZonedDateTime now = ZonedDateTime.now();
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy, EEEE | h:mm a", Locale.ENGLISH);
+            String formattedTime = "Today (" + now.format(formatter) + ")";
+
+            // Prepare dynamic placeholders
+            Map<String, String> placeholders = new HashMap<>();
+            placeholders.put("name", userName);
+            placeholders.put("formatted_time", formattedTime);
+
+            // Get formatted body with dynamic values
+            String body = emailTemplateService.getFormattedBody("email." +action, placeholders);
 
             // Set email details
-            message.setFrom(senderEmail);
+            message.setFrom("Art Asylum <emailSender>");
+            message.setReplyTo("no-reply@gmail.com");
             message.setTo(recipientEmail);
             message.setSubject(subject);
             message.setText(body);
@@ -45,9 +64,9 @@ public class EmailService {
             try {
                 // Send the email
                 emailSender.send(message);
-                log.info("Login notification email sent to {}", recipientEmail);
+                log.info("Notification email sent to {}", recipientEmail);
             } catch (Exception e) {
-                log.error("Failed to send login notification email to {}: {}", recipientEmail, e.getMessage());
+                log.error("Failed to send notification email to {}: {}", recipientEmail, e.getMessage());
             }
         });
     }

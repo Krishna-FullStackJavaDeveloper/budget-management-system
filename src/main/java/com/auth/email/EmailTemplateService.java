@@ -56,4 +56,17 @@ public class EmailTemplateService {
         return cachedBodies.getOrDefault(key, "No Content"); // Use cached bodies
     }
 
+    //    Modify your EmailTemplateService to replace placeholders dynamically.
+    public String getFormattedBody(String key, Map<String, String> placeholders) {
+        loadTemplates("email-templates.properties"); // Ensure templates are loaded
+        String body = cachedBodies.getOrDefault(key, "No Content");
+
+        // Replace placeholders dynamically
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            body = body.replace("{" + entry.getKey() + "}", entry.getValue());
+        }
+
+        return body;
+    }
+
 }
