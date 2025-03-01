@@ -8,7 +8,10 @@ import jdk.jfr.Name;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -39,13 +42,41 @@ public class User {
     @Size(max = 120)
     private String password;
 
+    @NotBlank
+    @Size(max = 50)
+    private String fullName;
+
+    @NotBlank
+    @Size(max = 15)
+    private String phoneNumber;
+
+    @Lob
+    @Column(name = "profile_pic", columnDefinition = "TEXT")
+    private String profilePic;  // Storing profile picture as Base64-encoded string
+
+    @Enumerated(EnumType.STRING)
+    private AccountStatus accountStatus = AccountStatus.ACTIVE; // Enum for account status
+
+    @CreationTimestamp
+    private LocalDateTime createdAt; // Auto-set when record is created
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt; // Auto-updated when record is modified
+
+    private LocalDateTime lastLogin; // Stores the last login time
+
+    private boolean twoFactorEnabled = false; // 2FA flag
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
 
-    public User(String username, String email, String password) {
+
+    public User( String username, String email, String password, String fullName, String phoneNumber) {
         this.username = username;
         this.email = email;
         this.password = password;
+        this.fullName = fullName;
+        this.phoneNumber = phoneNumber;
     }
 }

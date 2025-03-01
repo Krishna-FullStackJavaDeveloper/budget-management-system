@@ -1,5 +1,6 @@
 package com.auth.controller;
 
+import com.auth.entity.AccountStatus;
 import com.auth.entity.ERole;
 import com.auth.entity.Role;
 import com.auth.entity.User;
@@ -9,7 +10,6 @@ import com.auth.payload.request.LoginRequest;
 import com.auth.payload.request.SignupRequest;
 import com.auth.payload.response.ApiResponse;
 import com.auth.payload.response.JwtResponse;
-import com.auth.payload.response.MessageResponse;
 import com.auth.repository.RoleRepository;
 import com.auth.repository.UserRepository;
 import com.auth.email.EmailService;
@@ -17,12 +17,10 @@ import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsImpl;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -30,11 +28,11 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.apache.tomcat.util.codec.binary.Base64;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -100,15 +98,20 @@ public class AuthController {
                         .badRequest()
                         .body(new ApiResponse<>("Error: Email is already in use!", null, HttpStatus.BAD_REQUEST.value()));
             }
-
-            // Create new user's account
+        // Create new user's account
             User user = new User(signUpRequest.getUsername(),
                     signUpRequest.getEmail(),
-                    encoder.encode(signUpRequest.getPassword()));
-            Set<String> strRoles = signUpRequest.getRole();
+                    encoder.encode(signUpRequest.getPassword()),
+                    signUpRequest.getFullName(),
+                    signUpRequest.getPhoneNumber()
+                    );
+        user.setAccountStatus(AccountStatus.valueOf(signUpRequest.getAccountStatus())); // Set account status
+        user.setTwoFactorEnabled(signUpRequest.isTwoFactorEnabled()); // Set 2FA flag
+        user.setProfilePic(signUpRequest.getProfilePic());  // Save the Base64 encoded image string in the database
 
-            log.info("user{} request Role", strRoles);
-            Set<Role> roles = new HashSet<>();
+        Set<String> strRoles = signUpRequest.getRole();
+        log.info("user{} request Role", strRoles);
+        Set<Role> roles = new HashSet<>();
 
             if (strRoles == null) {
                 Role userRole = roleRepository.findByName(ERole.ROLE_USER)

@@ -63,6 +63,7 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(auth ->
                         auth.requestMatchers("/api/auth/**").permitAll()
                                 .requestMatchers("/api/test/**").permitAll()
+                                .requestMatchers("/api/files/**").permitAll()
                                 .anyRequest().authenticated()
                 );
 
@@ -72,4 +73,5 @@ public class WebSecurityConfig {
 
         return http.build();
     }
+
 }
