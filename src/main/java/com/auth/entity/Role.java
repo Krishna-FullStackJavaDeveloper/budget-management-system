@@ -1,5 +1,6 @@
 package com.auth.entity;
 
+import com.auth.eNum.ERole;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;

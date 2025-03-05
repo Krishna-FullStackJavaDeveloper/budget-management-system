@@ -1,10 +1,10 @@
 package com.auth.entity;
 
+import com.auth.eNum.AccountStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import jdk.jfr.Name;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -12,7 +12,9 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -65,11 +67,16 @@ public class User {
 
     private LocalDateTime lastLogin; // Stores the last login time
 
+    @Column(columnDefinition = "TINYINT(1)")
     private boolean twoFactorEnabled = false; // 2FA flag
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("expiryTime DESC") // Fetch the latest OTP first
+    private List<OTP> otps = new ArrayList<>();
 
 
     public User( String username, String email, String password, String fullName, String phoneNumber) {

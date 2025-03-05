@@ -1,20 +1,26 @@
 package com.auth.controller;
 
-import com.auth.entity.AccountStatus;
-import com.auth.entity.ERole;
+import com.auth.eNum.AccountStatus;
+import com.auth.eNum.ERole;
+import com.auth.entity.OTP;
 import com.auth.entity.Role;
 import com.auth.entity.User;
 import com.auth.jwt.AuthTokenFilter;
 import com.auth.jwt.JwtUtils;
 import com.auth.payload.request.LoginRequest;
+import com.auth.payload.request.OTPVerificationRequest;
 import com.auth.payload.request.SignupRequest;
 import com.auth.payload.response.ApiResponse;
 import com.auth.payload.response.JwtResponse;
+import com.auth.repository.OTPRepository;
 import com.auth.repository.RoleRepository;
 import com.auth.repository.UserRepository;
 import com.auth.email.EmailService;
+import com.auth.security.OtpAuthenticationToken;
+import com.auth.serviceImpl.OTPService;
 import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsImpl;
+import com.auth.serviceImpl.UserDetailsServiceImpl;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -29,10 +35,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import org.apache.tomcat.util.codec.binary.Base64;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -51,9 +54,13 @@ public class AuthController {
     private final RefreshTokenService refreshTokenService;
     private final EmailService emailService;
     private final AuthTokenFilter authTokenFilter;
+    private final OTPService otpService;
+    private final UserDetailsServiceImpl userDetailsService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<JwtResponse>> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
+
+        log.debug("User login attempt for username: {}", loginRequest.getUsername());
 
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
@@ -61,13 +68,22 @@ public class AuthController {
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
             UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-            List<String> roles = userDetails.getAuthorities().stream()
+            User user = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        if (user.isTwoFactorEnabled()) {
+            // If 2FA is enabled, generate and send OTP
+            otpService.generateOTP(user); //otp is generated and saved.
+            return ResponseEntity.ok(new ApiResponse<>("2FA OTP sent to your email", null, HttpStatus.ACCEPTED.value()));
+        }
+
+        List<String> roles = userDetails.getAuthorities().stream()
                     .map(item -> item.getAuthority())
                     .collect(Collectors.toList());
 
             String accessToken = jwtUtils.generateJwtToken(authentication);
-            String refershToken = refreshTokenService.createRefreshToken(userDetails.getUser());
-            log.info("Generated refresh token: {}", refershToken);
+            String refreshToken = refreshTokenService.createRefreshToken(userDetails.getUser());
+            log.info("Generated refresh token: {}", refreshToken);
 
         // Send login notification email asynchronously (to improve response time)
             CompletableFuture.runAsync(() -> emailService.sendLoginNotification(userDetails.getEmail(), userDetails.getUsername(),"login"));
@@ -78,10 +94,52 @@ public class AuthController {
                             userDetails.getUsername(),
                             userDetails.getEmail(),
                             roles,
-                            refershToken),
+                            refreshToken),
                     HttpStatus.OK.value()
             ));// Include the refresh token in the response
 
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<ApiResponse<JwtResponse>> verifyOtpAndLogin(
+            @Valid @RequestBody OTPVerificationRequest otpRequest) {
+
+        log.debug("Verifying user OTP attempt for username: {}", otpRequest.getUsername());
+
+        User user = userRepository.findByUsername(otpRequest.getUsername())
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        boolean isOtpValid = otpService.verifyOTP(user, otpRequest.getOtp());
+
+        if (!isOtpValid) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ApiResponse<>("Invalid or expired OTP", null, HttpStatus.UNAUTHORIZED.value()));
+        }
+
+        // Load user details
+        UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsService.loadUserByUsername(otpRequest.getUsername());
+
+        List<String> roles = userDetails.getAuthorities().stream()
+                .map(item -> item.getAuthority())
+                .collect(Collectors.toList());
+
+        // Generate JWT tokens using JwtUtils
+        String accessToken = jwtUtils.generateJwtToken(new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+        String refreshToken = jwtUtils.generateRefreshToken(new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+        log.info("Generated refresh token after OTP Creation: {}", refreshToken);
+
+        // Send login notification email asynchronously (to improve response time)
+        CompletableFuture.runAsync(() -> emailService.sendLoginNotification(userDetails.getEmail(), userDetails.getUsername(),"login"));
+        log.info("User {} logged in successfully!", otpRequest.getUsername());
+        return ResponseEntity.ok(new ApiResponse<>("Login successful",
+                new JwtResponse(accessToken,
+                        userDetails.getId(),
+                        userDetails.getUsername(),
+                        userDetails.getEmail(),
+                        roles,
+                        refreshToken),
+                HttpStatus.OK.value()
+        ));// Include the refresh token in the response
     }
 
     @PostMapping("/signup")
@@ -142,7 +200,7 @@ public class AuthController {
             user.setRoles(roles);
             userRepository.save(user);
             // Send login notification email asynchronously (to improve response time)
-            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(user.getEmail(), user.getUsername(),"register"));
+            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(user.getEmail(), user.getFullName(),"register"));
             log.info("Signup message sent successfully", signUpRequest.getUsername() + signUpRequest.getEmail());
 
         // Return successful response

@@ -21,7 +21,7 @@ public class UserDetailsImpl implements UserDetails{
     private final String email;
     @JsonIgnore
     private final String password;
-    private Collection<GrantedAuthority> authorities; // Lazy loading
+    private final Collection<GrantedAuthority> authorities; // Lazy loading
     private final User user;
 
 

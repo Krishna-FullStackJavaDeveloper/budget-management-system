@@ -1,4 +1,4 @@
-package com.auth.entity;
+package com.auth.eNum;
 
 public enum AccountStatus {
     ACTIVE,
