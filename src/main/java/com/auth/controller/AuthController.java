@@ -16,7 +16,6 @@ import com.auth.repository.OTPRepository;
 import com.auth.repository.RoleRepository;
 import com.auth.repository.UserRepository;
 import com.auth.email.EmailService;
-import com.auth.security.OtpAuthenticationToken;
 import com.auth.serviceImpl.OTPService;
 import com.auth.serviceImpl.RefreshTokenService;
 import com.auth.serviceImpl.UserDetailsImpl;
