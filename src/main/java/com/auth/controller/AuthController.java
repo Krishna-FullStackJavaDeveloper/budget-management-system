@@ -35,6 +35,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -87,6 +88,10 @@ public class AuthController {
         // Send login notification email asynchronously (to improve response time)
             CompletableFuture.runAsync(() -> emailService.sendLoginNotification(userDetails.getEmail(), userDetails.getUsername(),"login"));
             log.info("User {} logged in successfully", loginRequest.getUsername());
+        // Update the last login timestamp for the user
+        user.setLastLogin(LocalDateTime.now()); // Set the current timestamp
+        userRepository.save(user); // Save the updated user to persist the last login time
+
             return ResponseEntity.ok(new ApiResponse<>("Login successful",
                     new JwtResponse(accessToken,
                             userDetails.getId(),
@@ -130,6 +135,10 @@ public class AuthController {
         // Send login notification email asynchronously (to improve response time)
         CompletableFuture.runAsync(() -> emailService.sendLoginNotification(userDetails.getEmail(), userDetails.getUsername(),"login"));
         log.info("User {} logged in successfully!", otpRequest.getUsername());
+        // Update the last login timestamp for the user
+        user.setLastLogin(LocalDateTime.now()); // Set the current timestamp
+        userRepository.save(user); // Save the updated user to persist the last login time
+
         return ResponseEntity.ok(new ApiResponse<>("Login successful",
                 new JwtResponse(accessToken,
                         userDetails.getId(),

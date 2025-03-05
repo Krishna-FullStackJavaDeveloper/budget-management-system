@@ -29,34 +29,48 @@ public class OTPService {
 
     private final OTPRepository otpRepository;
     private final EmailService emailService;
+    private static final int OTP_EXPIRY_MINUTES = 5;
+    private static final int OTP_REUSE_THRESHOLD_SECONDS = 60;
+
 
     //generate OTP
     @Transactional
     public OTP generateOTP(User user) {
         try {
-            //Expire previous OTPs.
-            if (otpRepository.existsByUser(user)){
-                log.info("Existing OTPs found for user: {}. Expiring old OTPs.", user.getUsername());
+            Optional<OTP> latestOtpOpt = otpRepository.findByUserOrderByExpiryTimeDesc(user, OTPStatus.ACTIVE);
+            if (latestOtpOpt.isPresent()) {
+                OTP latestOtp = latestOtpOpt.get();
+                if (latestOtp.getExpirytime().isAfter(LocalDateTime.now().minusSeconds(OTP_REUSE_THRESHOLD_SECONDS))) {
+                    log.info("Reusing OTP for user: {}", user.getUsername());
 
-                otpRepository.expireOldOTPs(user);
+                    // Send email with the old OTP
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            emailService.sendOTPNotification(user.getEmail(), user.getUsername(), "otp", latestOtp.getOtp());
+                        } catch (Exception e) {
+                            log.error("Failed to send OTP email for user: {}", user.getUsername(), e);
+                        }
+                    });
+                    return latestOtp;
+                }
+                log.info("Expiring old OTP for user: {}", user.getUsername());
+                latestOtp.setStatus(OTPStatus.EXPIRED);
+                otpRepository.save(latestOtp);
             }
 
-            //Generate new OTP.
+// Generate a new OTP if no valid one exists or the old one expired
             String otpCode = generateRandomOTP();
-            OTP newOtp = new OTP();
-            newOtp.setUser(user);
-            newOtp.setOtp(otpCode);
-            newOtp.setExpirytime(LocalDateTime.now().plusMinutes(15)); // 5 minute expiry
-            newOtp.setStatus(OTPStatus.ACTIVE);
+            OTP newOtp = OTP.builder()
+                    .user(user)
+                    .otp(otpCode)
+                    .expirytime(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
+                    .status(OTPStatus.ACTIVE)
+                    .build();
 
-            log.info("Generate new OTP for user: {}", user.getUsername());
-            OTP savedotp = otpRepository.save(newOtp);
+            OTP savedOtp = otpRepository.save(newOtp);
+            log.info("New OTP generated for user: {}", user.getUsername());
 
-            log.info("Current timestamp: {}", LocalDateTime.now());
-            log.info("Expiry time for OTP: {}", savedotp.getExpirytime());
-
-
-            // Send OTP via email asynchronously.
+            // Send the new OTP via email asynchronously
             CompletableFuture.runAsync(() -> {
                 try {
                     emailService.sendOTPNotification(user.getEmail(), user.getUsername(), "otp", otpCode);
@@ -65,9 +79,9 @@ public class OTPService {
                 }
             });
 
-            return savedotp;
+            return savedOtp;
         } catch (Exception e) {
-            log.error("Error occurred while generating OTP for user: {}", user.getUsername(), e);
+            log.error("Error while generating OTP for user: {}", user.getUsername(), e);
             throw new OTPGenerationException("Failed to generate OTP", e);
         }
     }

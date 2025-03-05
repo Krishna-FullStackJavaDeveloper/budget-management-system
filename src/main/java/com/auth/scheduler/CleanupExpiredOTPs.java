@@ -16,12 +16,12 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class cleanupExpiredOTPs {
+public class CleanupExpiredOTPs {
 
     private final OTPRepository otpRepository;
     private final ExecutorService executorService = Executors.newFixedThreadPool(4); // Thread pool for async tasks
 
-    @Scheduled(cron = "0 0 * * * ?") // Runs every hour
+    @Scheduled(cron = "0 0 12 * * ?") // Runs every hour
     public void cleanupExpiredOTPs() {
         try{
             log.info("Started cleaning expired OTPs");
