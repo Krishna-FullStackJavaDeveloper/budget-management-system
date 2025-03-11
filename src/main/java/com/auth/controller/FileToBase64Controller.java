@@ -45,9 +45,16 @@ public class FileToBase64Controller {
         }
     }
 
-    // Helper method to encode file to Base64
+     // Helper method to encode file to Base64
     private String encodeFileToBase64(MultipartFile file) throws IOException {
         byte[] fileBytes = file.getBytes();
-        return Base64.getEncoder().encodeToString(fileBytes);
+        String encoded = Base64.getEncoder().encodeToString(fileBytes);
+
+        // Regular expression to match any image type prefix (e.g., data:image/png;base64, or data:image/jpeg;base64,)
+        String base64PrefixPattern = "data:image/\\w+;base64,";
+        if (encoded.matches(base64PrefixPattern)) {
+            encoded = encoded.replaceFirst(base64PrefixPattern, "");
+        }
+        return encoded;
     }
 }

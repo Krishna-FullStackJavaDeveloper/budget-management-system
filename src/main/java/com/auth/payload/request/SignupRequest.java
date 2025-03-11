@@ -44,4 +44,7 @@ public class SignupRequest {
     private String accountStatus = "ACTIVE";  // Default to ACTIVE status, can be "ACTIVE" or "INACTIVE"
 
     private boolean twoFactorEnabled = false;  // Default to false for 2FA
+
+    private String familyName; // Family name to be assigned to the user
+
 }

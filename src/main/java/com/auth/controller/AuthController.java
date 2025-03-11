@@ -2,6 +2,7 @@ package com.auth.controller;
 
 import com.auth.eNum.AccountStatus;
 import com.auth.eNum.ERole;
+import com.auth.entity.Family;
 import com.auth.entity.OTP;
 import com.auth.entity.Role;
 import com.auth.entity.User;
@@ -12,14 +13,12 @@ import com.auth.payload.request.OTPVerificationRequest;
 import com.auth.payload.request.SignupRequest;
 import com.auth.payload.response.ApiResponse;
 import com.auth.payload.response.JwtResponse;
+import com.auth.repository.FamilyRepository;
 import com.auth.repository.OTPRepository;
 import com.auth.repository.RoleRepository;
 import com.auth.repository.UserRepository;
 import com.auth.email.EmailService;
-import com.auth.serviceImpl.OTPService;
-import com.auth.serviceImpl.RefreshTokenService;
-import com.auth.serviceImpl.UserDetailsImpl;
-import com.auth.serviceImpl.UserDetailsServiceImpl;
+import com.auth.serviceImpl.*;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -34,10 +33,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import com.auth.globalException.FamilyNotFoundException;
 
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @RestController
@@ -56,6 +57,8 @@ public class AuthController {
     private final AuthTokenFilter authTokenFilter;
     private final OTPService otpService;
     private final UserDetailsServiceImpl userDetailsService;
+    private final FamilyService familyService;
+    private final FamilyRepository familyRepository;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<JwtResponse>> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
@@ -164,56 +167,45 @@ public class AuthController {
                         .badRequest()
                         .body(new ApiResponse<>("Error: Email is already in use!", null, HttpStatus.BAD_REQUEST.value()));
             }
-        // Create new user's account
-            User user = new User(signUpRequest.getUsername(),
-                    signUpRequest.getEmail(),
-                    encoder.encode(signUpRequest.getPassword()),
-                    signUpRequest.getFullName(),
-                    signUpRequest.getPhoneNumber()
-                    );
-        user.setAccountStatus(AccountStatus.valueOf(signUpRequest.getAccountStatus())); // Set account status
-        user.setTwoFactorEnabled(signUpRequest.isTwoFactorEnabled()); // Set 2FA flag
-        user.setProfilePic(signUpRequest.getProfilePic());  // Save the Base64 encoded image string in the database
+        try {
+                User user = userDetailsService.createNewUser(signUpRequest);
 
-        Set<String> strRoles = signUpRequest.getRole();
-        log.info("user{} request Role", strRoles);
-        Set<Role> roles = new HashSet<>();
+                // Handle the case where the user is a moderator
+                if (signUpRequest.getRole().contains("mod")) {
 
-            if (strRoles == null) {
-                Role userRole = roleRepository.findByName(ERole.ROLE_USER)
-                        .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-                roles.add(userRole);
-            } else {
-                strRoles.forEach(role -> {
-                    switch (role) {
-                        case "admin":
-                            Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
-                                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-                            roles.add(adminRole);
-
-                            break;
-                        case "mod":
-                            Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
-                                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-                            roles.add(modRole);
-
-                            break;
-                        default:
-                            Role userRole = roleRepository.findByName(ERole.ROLE_USER)
-                                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
-                            roles.add(userRole);
+                    if (signUpRequest.getFamilyName() == null || signUpRequest.getFamilyName().isEmpty()) {
+                        return ResponseEntity.badRequest()
+                                .body(new ApiResponse<>("Error: Family name is required for moderators.", null, HttpStatus.BAD_REQUEST.value()));
                     }
-                });
-            }
-            user.setRoles(roles);
-            userRepository.save(user);
-            // Send login notification email asynchronously (to improve response time)
-            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(user.getEmail(), user.getFullName(),"register"));
-            log.info("Signup message sent successfully", signUpRequest.getUsername() + signUpRequest.getEmail());
+                    try {
+                        Family createdFamily = familyService.createFamilyByAdmin(user, signUpRequest.getFamilyName());
+                        user.setFamily(createdFamily);
 
-        // Return successful response
-            ApiResponse<String> response = new ApiResponse<>("User registered successfully!", null, HttpStatus.OK.value());
-            return ResponseEntity.ok(response);
+                    } catch (Exception e) {
+                        return ResponseEntity.badRequest()
+                                .body(new ApiResponse<>(e.getMessage(), null, HttpStatus.BAD_REQUEST.value()));
+                    }
+                }
+                // Handle the case where the user is a regular user
+                if (signUpRequest.getRole().contains("user") && signUpRequest.getFamilyName() != null) {
+                    try {
+                        familyService.createFamilyUser(signUpRequest);
+                        return ResponseEntity.ok(new ApiResponse<>("User registered successfully.", null, HttpStatus.OK.value()));
+                    } catch (Exception e) {
+                        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .body(new ApiResponse<>("Error: " + e.getMessage(), null, HttpStatus.INTERNAL_SERVER_ERROR.value()));
+                    }
+                }
+
+            // Save the user in the repository if not a moderator or user with family assignment
+            userRepository.save(user);
+            CompletableFuture.runAsync(() -> emailService.sendLoginNotification(user.getEmail(), user.getFullName(), "register"));
+            return ResponseEntity.ok(new ApiResponse<>("User registered successfully!", null, HttpStatus.OK.value()));
+
+        }catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiResponse<>("Error: " + e.getMessage(), null, HttpStatus.INTERNAL_SERVER_ERROR.value()));
+        }
     }
 
     @PostMapping("/refresh")

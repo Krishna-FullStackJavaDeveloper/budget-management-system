@@ -3,6 +3,7 @@ package com.auth.repository;
 import com.auth.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -18,4 +19,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u JOIN u.roles r WHERE r.name = 'ROLE_ADMIN'")
     List<User> findAdmins();
+
+    Optional<User> findById(Long id);
+
+    @Query("SELECT u FROM User u JOIN u.roles r WHERE u.family.id = ?1 AND r.id = 2")
+    Optional<User> findModeratorByFamilyId(@Param("familyId") Long familyId);
 }

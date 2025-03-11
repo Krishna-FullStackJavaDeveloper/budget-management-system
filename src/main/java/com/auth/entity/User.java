@@ -71,13 +71,26 @@ public class User {
     private boolean twoFactorEnabled = false; // 2FA flag
 
     @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
+    @JoinTable(
+            name = "user_roles",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("expiryTime DESC") // Fetch the latest OTP first
     private List<OTP> otps = new ArrayList<>();
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "family_id")
+    private Family family;  // New field to track the family to which this user belongs
+
+    public void setFamily(Family family) {
+        this.family = family;
+        if (!family.getUsers().contains(this)) {
+            family.getUsers().add(this);
+        }
+    }
 
     public User( String username, String email, String password, String fullName, String phoneNumber) {
         this.username = username;
