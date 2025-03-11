@@ -2,6 +2,7 @@ package com.auth.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -27,6 +28,11 @@ public class Family {
     @Size(max = 100)
     private String familyName;
 
+    @NotBlank
+    @Size(max = 120)
+    @Pattern(regexp = "^[a-zA-Z0-9!@#$%^&*(),.?\":{}|<>_+\\-=]*$", message = "Password contains invalid characters.")
+    private String passkey;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "moderator_id")
     private User moderator;  // The moderator who created this family
@@ -44,31 +50,7 @@ public class Family {
         this.familyName = familyName;
     }
 
-    public void addUser(User user) {
-        if (hasMaxUsers()) {
-            if (this.users == null) {
-                this.users = new ArrayList<>(); // Correct initialization as a List
-            }
-            this.users.add(user);
-            user.setFamily(this);
-            this.userSize = this.users.size(); // Ensure userSize updates correctly
-        } else {
-            throw new RuntimeException("Cannot add more users, family is full.");
-        }
-    }
 
-    public void removeUser(User user) {
-        this.users.remove(user);
-        user.setFamily(null);
-        this.userSize = users.size(); // Update user size when removing a user
-    }
 
-    public boolean hasMaxUsers() {
-        return (this.users != null ? this.users.size() : 0) >= 5; // Fix potential null issue
-    }
-
-    public void updateUserSize() {
-        this.userSize = users.size(); // Ensure the size reflects the current number of users
-    }
 }
 

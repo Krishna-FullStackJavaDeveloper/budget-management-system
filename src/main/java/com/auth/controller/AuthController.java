@@ -178,7 +178,7 @@ public class AuthController {
                                 .body(new ApiResponse<>("Error: Family name is required for moderators.", null, HttpStatus.BAD_REQUEST.value()));
                     }
                     try {
-                        Family createdFamily = familyService.createFamilyByAdmin(user, signUpRequest.getFamilyName());
+                        Family createdFamily = familyService.createFamilyByAdmin(user, signUpRequest);
                         user.setFamily(createdFamily);
 
                     } catch (Exception e) {
@@ -188,6 +188,10 @@ public class AuthController {
                 }
                 // Handle the case where the user is a regular user
                 if (signUpRequest.getRole().contains("user") && signUpRequest.getFamilyName() != null) {
+                    if(signUpRequest.getPasskey() == null || signUpRequest.getPasskey().trim().isEmpty()){
+                        return ResponseEntity.badRequest()
+                                .body(new ApiResponse<>("Error: Family Password Required.", null, HttpStatus.BAD_REQUEST.value()));
+                    }
                     try {
                         familyService.createFamilyUser(signUpRequest);
                         return ResponseEntity.ok(new ApiResponse<>("User registered successfully.", null, HttpStatus.OK.value()));

@@ -9,8 +9,8 @@ import com.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Hibernate;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,18 +24,26 @@ public class FamilyService {
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final UserDetailsServiceImpl userDetailsService;
+    private final PasswordEncoder encoder;
 
     @Transactional
-    public Family createFamilyByAdmin(User admin, String familyName) throws Exception {
+    public Family createFamilyByAdmin(User admin, SignupRequest signupRequest) throws Exception {
+
+        String familyName = signupRequest.getFamilyName();
+
         if (familyName == null || familyName.trim().isEmpty()) {
             throw new RuntimeException("Error: Family name is required.");
         }
         if (familyRepository.existsByFamilyName(familyName)) {
             throw new RuntimeException("Error: Family name already exists.");
         }
+        if(signupRequest.getPasskey().trim().isEmpty()){
+            throw new RuntimeException("Error: Family Password required.");
+        }
 
         Family family = new Family(familyName);
         family.setModerator(admin);
+        family.setPasskey(signupRequest.getPasskey());
         family.setUserSize(1); // Initially, 1 (the moderator)
         familyRepository.save(family);
 
@@ -45,6 +53,8 @@ public class FamilyService {
     }
 
     public User createFamilyUser(SignupRequest signUpRequest) throws Exception {
+        String familyPass = signUpRequest.getPasskey();
+
         if (signUpRequest.getFamilyName() == null || signUpRequest.getFamilyName().trim().isEmpty()) {
             throw new RuntimeException("Error: Family name is required.");
         }
@@ -61,6 +71,10 @@ public class FamilyService {
 
         Family family = familyOptional.get();  //  Extract family safely before using it
 
+        if (!familyPass.equals(family.getPasskey())){
+            throw new RuntimeException(" Family Password is incorrect.");
+        }
+
         Hibernate.initialize(family.getUsers());
         if (family.getUserSize() >= 6) {
             throw new RuntimeException("Error: Family user size limit (6) reached.");
@@ -69,11 +83,10 @@ public class FamilyService {
         User user = userDetailsService.createNewUser(signUpRequest);
         user.setFamily(family);  // Assign user to family
 
-//        family.addUser(user);  // Add user to family list
-        family.setUserSize(family.getUserSize() + 1);
 
+        family.setUserSize(family.getUserSize() + 1);
         familyRepository.save(family);
-//        userRepository.save(user);  // Ensure the new user is saved
+
         sendNotificationEmail(familyAdmin.get());
         return user;
     }

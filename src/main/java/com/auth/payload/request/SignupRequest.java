@@ -47,4 +47,7 @@ public class SignupRequest {
 
     private String familyName; // Family name to be assigned to the user
 
+    @Size(min = 6, max = 40)
+    private String passkey;
+
 }
