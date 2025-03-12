@@ -103,4 +103,14 @@ public class GlobalExceptionHandler {
                 .body(new ApiResponse<>("Unsupported content type: " + ex.getMessage(), null, HttpStatus.UNSUPPORTED_MEDIA_TYPE.value()));
     }
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiResponse<String>> handleResourceNotFoundException(ResourceNotFoundException ex) {
+        ApiResponse<String> response = new ApiResponse<>(
+                ex.getMessage(),
+                null,
+                HttpStatus.NOT_FOUND.value()
+        );
+        return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+    }
+
 }

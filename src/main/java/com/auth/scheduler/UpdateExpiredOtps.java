@@ -21,7 +21,7 @@ public class UpdateExpiredOtps {
     private final OTPRepository otpRepository;
     private final ExecutorService executorService = Executors.newFixedThreadPool(2);
 
-//    @Scheduled(fixedRate = 60000) //Runs every minute
+    @Scheduled(fixedRate = 60000) //Runs every minute
     public void scheduleOtpExpiry() {
         expireOtpsAsync(); //Calls async method separately
     }

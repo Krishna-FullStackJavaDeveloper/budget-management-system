@@ -87,14 +87,17 @@ public class FamilyService {
         family.setUserSize(family.getUserSize() + 1);
         familyRepository.save(family);
 
-        sendNotificationEmail(familyAdmin.get());
+        sendNotificationEmail(familyAdmin.get(), user);
         return user;
     }
 
     @Async
-    private void sendNotificationEmail(User moderator) {
+    private void sendNotificationEmail(User moderator, User user) {
         // Send email to the moderator
         emailService.sendLoginNotification(moderator.getEmail(), moderator.getFullName(), "userCreated");
+
+        //send email to the user
+        emailService.sendLoginNotification(user.getEmail(), user.getFullName(), "register");
     }
 
 }

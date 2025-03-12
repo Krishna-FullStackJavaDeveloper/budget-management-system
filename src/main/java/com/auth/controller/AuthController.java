@@ -187,7 +187,7 @@ public class AuthController {
                     }
                 }
                 // Handle the case where the user is a regular user
-                if (signUpRequest.getRole().contains("user") && signUpRequest.getFamilyName() != null) {
+                if ((signUpRequest.getRole().contains("user") || signUpRequest.getRole().contains("USER") || signUpRequest.getRole().equals(ERole.ROLE_USER)) && signUpRequest.getFamilyName() != null) {
                     if(signUpRequest.getPasskey() == null || signUpRequest.getPasskey().trim().isEmpty()){
                         return ResponseEntity.badRequest()
                                 .body(new ApiResponse<>("Error: Family Password Required.", null, HttpStatus.BAD_REQUEST.value()));
